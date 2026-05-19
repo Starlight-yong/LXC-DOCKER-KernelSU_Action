@@ -6,11 +6,15 @@ on:
 jobs:
   build:
     name: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     if: github.event.repository.owner.id == github.event.sender.id
 
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
     steps:
-      - uses: actions/checkout@v4
+      - name: 检出仓库
+        uses: actions/checkout@v5
 
       - name: 环境变量配置
         run: |
@@ -18,22 +22,47 @@ jobs:
           cat config.env | grep KERNEL_SOURCE_BRANCH= >> $GITHUB_ENV
           cat config.env | grep KERNEL_CONFIG= >> $GITHUB_ENV
           cat config.env | grep KERNEL_ZIP_NAME= >> $GITHUB_ENV
+          cat config.env | grep KERNEL_IMAGE_NAME= >> $GITHUB_ENV
           cat config.env | grep LLVM_CONFIG= >> $GITHUB_ENV
           cat config.env | grep ENABLE_KERNELSU= >> $GITHUB_ENV
           cat config.env | grep KERNELSU_TAG= >> $GITHUB_ENV
           cat config.env | grep ENABLE_KVM= >> $GITHUB_ENV
           cat config.env | grep ENABLE_LXC_DOCKER= >> $GITHUB_ENV
+          cat config.env | grep SWITCH_PYTHON= >> $GITHUB_ENV
+          cat config.env | grep NEED_DTBO= >> $GITHUB_ENV
 
       - name: 构建编译内核环境
         run: |
           sudo apt-get update
-          sudo -E apt-get -y -qq install git make bc bison ccache openssl zip kmod cpio flex libelf-dev curl libssl-dev libtfm-dev wget device-tree-compiler ca-certificates python3 python2 binutils binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi
+          sudo -E apt-get -y -qq install \
+            git \
+            make \
+            bc \
+            bison \
+            ccache \
+            openssl \
+            zip \
+            kmod \
+            cpio \
+            flex \
+            libelf-dev \
+            curl \
+            libssl-dev \
+            libtfm-dev \
+            wget \
+            device-tree-compiler \
+            ca-certificates \
+            python3 \
+            python-is-python3 \
+            binutils \
+            binutils-aarch64-linux-gnu \
+            binutils-arm-linux-gnueabi
           mkdir -p $GITHUB_WORKSPACE/kernel_workspace
 
-      - name: 下载zyc-clang编译器
+      - name: 下载 zyc-clang 编译器
         run: |
           cd $GITHUB_WORKSPACE/kernel_workspace
-          mkdir clang-zyc
+          mkdir -p clang-zyc
           wget https://github.com/ZyCromerZ/Clang/releases/download/18.0.0-20230913-release/Clang-18.0.0-20230913.tar.gz
           tar -C clang-zyc/ -zxf Clang-18.0.0-20230913.tar.gz
 
@@ -42,7 +71,7 @@ jobs:
           cd $GITHUB_WORKSPACE/kernel_workspace
           git clone ${{ env.KERNEL_SOURCE }} -b ${{ env.KERNEL_SOURCE_BRANCH }} android-kernel --depth=1
 
-      - name: 开启lxc和docker配置
+      - name: 开启 lxc 和 docker 配置
         if: env.ENABLE_LXC_DOCKER == 'true'
         run: |
           cd $GITHUB_WORKSPACE/kernel_workspace
@@ -51,19 +80,21 @@ jobs:
           ./add-lxc-docker-custom.sh android-kernel/arch/arm64/configs/${{ env.KERNEL_CONFIG }}
           echo "# CONFIG_ANDROID_PARANOID_NETWORK is not set" >> android-kernel/arch/arm64/configs/${{ env.KERNEL_CONFIG }}
 
-      - name: 添加runc补丁
+      - name: 添加 runc 补丁
         run: |
           cd $GITHUB_WORKSPACE/kernel_workspace
           wget https://github.com/fate-think/LXC-DOCKER-KernelSU_Action/releases/download/1.0.0/runcpatch.sh
           chmod a+x runcpatch.sh
+
           if [ -f android-kernel/kernel/cgroup.c ]; then
             ./runcpatch.sh android-kernel/kernel/cgroup.c
           fi
+
           if [ -f android-kernel/kernel/cgroup/cgroup.c ]; then
             ./runcpatch.sh android-kernel/kernel/cgroup/cgroup.c
           fi
 
-      - name: 修复clang18部分
+      - name: 修复 clang18 部分
         run: |
           cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
           sed -i "s/CONFIG_CC_STACKPROTECTOR_STRONG=y/# CONFIG_CC_STACKPROTECTOR_STRONG is not set/g" arch/arm64/configs/${{ env.KERNEL_CONFIG }}
@@ -71,13 +102,13 @@ jobs:
           chmod u+x clangfix2.sh
           ./clangfix2.sh
 
-      - name: 配置 ksu
+      - name: 配置 KernelSU
         if: env.ENABLE_KERNELSU == 'true'
         run: |
           cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s ${{ env.KERNELSU_TAG }}
 
-      - name: 开启kvm
+      - name: 开启 kvm
         if: env.ENABLE_KVM == 'true'
         run: |
           cd $GITHUB_WORKSPACE/kernel_workspace
@@ -86,15 +117,16 @@ jobs:
           echo "CONFIG_VHOST_NET=y" >> android-kernel/arch/arm64/configs/${{ env.KERNEL_CONFIG }}
           echo "CONFIG_VHOST_CROSS_ENDIAN_LEGACY=y" >> android-kernel/arch/arm64/configs/${{ env.KERNEL_CONFIG }}
 
-      - name: 设置ccache缓存
+      - name: 设置 ccache 缓存
         uses: hendrikmuhs/ccache-action@v1.2
         with:
-          key: build-kernel-mido-kernel
+          key: build-kernel-sagit-msm8998
           max-size: 2G
 
       - name: 开始编译内核
         run: |
           cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+
           export PATH=$GITHUB_WORKSPACE/kernel_workspace/clang-zyc/bin:$PATH
           export KBUILD_BUILD_HOST=17
           export KBUILD_BUILD_USER=HyperPower
@@ -126,13 +158,20 @@ jobs:
       - name: 准备打包内核
         run: |
           cd $GITHUB_WORKSPACE/kernel_workspace
+
           git clone https://github.com/osm0sis/AnyKernel3
+
           sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
           sed -i 's!block=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;!block=/dev/block/bootdevice/by-name/boot;!g' AnyKernel3/anykernel.sh
           sed -i 's/is_slot_device=1;/is_slot_device=0;/g' AnyKernel3/anykernel.sh
-          cp android-kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
-          rm -rf AnyKernel3/.git* AnyKernel3/README.md
-          rm -rf AnyKernel3/ramdisk AnyKernel3/modules AnyKernel3/patch
+
+          cp android-kernel/out/arch/arm64/boot/${{ env.KERNEL_IMAGE_NAME }} AnyKernel3/
+
+          rm -rf AnyKernel3/.git*
+          rm -rf AnyKernel3/README.md
+          rm -rf AnyKernel3/ramdisk
+          rm -rf AnyKernel3/modules
+          rm -rf AnyKernel3/patch
 
       - name: 打包并上传
         uses: actions/upload-artifact@v4
