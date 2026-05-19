@@ -1,4 +1,4 @@
-name: 低端机 zyc clang18
+name: 小米6 sagit KernelSU zyc clang18
 
 on:
   workflow_dispatch:
@@ -43,8 +43,6 @@ jobs:
           echo "KERNELSU_TAG=${{ env.KERNELSU_TAG }}"
           echo "ENABLE_KVM=${{ env.ENABLE_KVM }}"
           echo "ENABLE_LXC_DOCKER=${{ env.ENABLE_LXC_DOCKER }}"
-          echo "SWITCH_PYTHON=${{ env.SWITCH_PYTHON }}"
-          echo "NEED_DTBO=${{ env.NEED_DTBO }}"
 
       - name: 构建编译内核环境
         run: |
@@ -63,7 +61,6 @@ jobs:
             libelf-dev \
             curl \
             libssl-dev \
-            libtfm-dev \
             wget \
             device-tree-compiler \
             ca-certificates \
@@ -90,37 +87,6 @@ jobs:
           git ls-remote --heads "${{ env.KERNEL_SOURCE }}"
           git clone "${{ env.KERNEL_SOURCE }}" -b "${{ env.KERNEL_SOURCE_BRANCH }}" android-kernel --depth=1
 
-      - name: 开启 lxc 和 docker 配置
-        if: env.ENABLE_LXC_DOCKER == 'true'
-        run: |
-          cd $GITHUB_WORKSPACE/kernel_workspace
-          wget https://github.com/fate-think/LXC-DOCKER-KernelSU_Action/releases/download/1.0.0/add-lxc-docker-custom.sh
-          chmod 755 add-lxc-docker-custom.sh
-          ./add-lxc-docker-custom.sh android-kernel/arch/arm64/configs/${{ env.KERNEL_CONFIG }}
-          echo "# CONFIG_ANDROID_PARANOID_NETWORK is not set" >> android-kernel/arch/arm64/configs/${{ env.KERNEL_CONFIG }}
-
-      - name: 添加 runc 补丁
-        run: |
-          cd $GITHUB_WORKSPACE/kernel_workspace
-          wget https://github.com/fate-think/LXC-DOCKER-KernelSU_Action/releases/download/1.0.0/runcpatch.sh
-          chmod a+x runcpatch.sh
-
-          if [ -f android-kernel/kernel/cgroup.c ]; then
-            ./runcpatch.sh android-kernel/kernel/cgroup.c
-          fi
-
-          if [ -f android-kernel/kernel/cgroup/cgroup.c ]; then
-            ./runcpatch.sh android-kernel/kernel/cgroup/cgroup.c
-          fi
-
-      - name: 修复 clang18 部分
-        run: |
-          cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-          sed -i "s/CONFIG_CC_STACKPROTECTOR_STRONG=y/# CONFIG_CC_STACKPROTECTOR_STRONG is not set/g" arch/arm64/configs/${{ env.KERNEL_CONFIG }}
-          wget https://github.com/fate-think/LXC-DOCKER-KernelSU_Action/releases/download/1.0.0/clangfix2.sh
-          chmod u+x clangfix2.sh
-          ./clangfix2.sh
-
       - name: 配置 KernelSU
         if: env.ENABLE_KERNELSU == 'true'
         run: |
@@ -136,10 +102,15 @@ jobs:
           echo "CONFIG_VHOST_NET=y" >> android-kernel/arch/arm64/configs/${{ env.KERNEL_CONFIG }}
           echo "CONFIG_VHOST_CROSS_ENDIAN_LEGACY=y" >> android-kernel/arch/arm64/configs/${{ env.KERNEL_CONFIG }}
 
+      - name: 修复部分 clang 编译配置
+        run: |
+          cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+          sed -i "s/CONFIG_CC_STACKPROTECTOR_STRONG=y/# CONFIG_CC_STACKPROTECTOR_STRONG is not set/g" arch/arm64/configs/${{ env.KERNEL_CONFIG }}
+
       - name: 设置 ccache 缓存
         uses: hendrikmuhs/ccache-action@v1.2
         with:
-          key: build-kernel-sagit-msm8998
+          key: build-kernel-sagit-msm8998-ksu
           max-size: 2G
 
       - name: 开始编译内核
@@ -147,8 +118,8 @@ jobs:
           cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
 
           export PATH=$GITHUB_WORKSPACE/kernel_workspace/clang-zyc/bin:$PATH
-          export KBUILD_BUILD_HOST=17
-          export KBUILD_BUILD_USER=HyperPower
+          export KBUILD_BUILD_HOST=GitHub
+          export KBUILD_BUILD_USER=KernelSU
 
           make -s -j$(nproc --all) O=out ARCH=arm64 ${{ env.KERNEL_CONFIG }}
 
