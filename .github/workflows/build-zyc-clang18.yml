@@ -69,7 +69,7 @@ jobs:
       - name: 下载内核源码
         run: |
           cd $GITHUB_WORKSPACE/kernel_workspace
-          git clone ${{ env.KERNEL_SOURCE }} -b ${{ env.KERNEL_SOURCE_BRANCH }} android-kernel --depth=1
+          git clone "${{ env.KERNEL_SOURCE }}" -b "${{ env.KERNEL_SOURCE_BRANCH }}" android-kernel --depth=1
 
       - name: 开启 lxc 和 docker 配置
         if: env.ENABLE_LXC_DOCKER == 'true'
@@ -165,7 +165,14 @@ jobs:
           sed -i 's!block=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;!block=/dev/block/bootdevice/by-name/boot;!g' AnyKernel3/anykernel.sh
           sed -i 's/is_slot_device=1;/is_slot_device=0;/g' AnyKernel3/anykernel.sh
 
-          cp android-kernel/out/arch/arm64/boot/${{ env.KERNEL_IMAGE_NAME }} AnyKernel3/
+          if [ -f android-kernel/out/arch/arm64/boot/${{ env.KERNEL_IMAGE_NAME }} ]; then
+            cp android-kernel/out/arch/arm64/boot/${{ env.KERNEL_IMAGE_NAME }} AnyKernel3/
+          else
+            echo "找不到内核镜像文件：android-kernel/out/arch/arm64/boot/${{ env.KERNEL_IMAGE_NAME }}"
+            echo "当前 boot 输出目录内容如下："
+            ls -lah android-kernel/out/arch/arm64/boot/
+            exit 1
+          fi
 
           rm -rf AnyKernel3/.git*
           rm -rf AnyKernel3/README.md
