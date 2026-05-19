@@ -31,6 +31,21 @@ jobs:
           cat config.env | grep SWITCH_PYTHON= >> $GITHUB_ENV
           cat config.env | grep NEED_DTBO= >> $GITHUB_ENV
 
+      - name: 显示当前配置
+        run: |
+          echo "KERNEL_SOURCE=${{ env.KERNEL_SOURCE }}"
+          echo "KERNEL_SOURCE_BRANCH=${{ env.KERNEL_SOURCE_BRANCH }}"
+          echo "KERNEL_CONFIG=${{ env.KERNEL_CONFIG }}"
+          echo "KERNEL_ZIP_NAME=${{ env.KERNEL_ZIP_NAME }}"
+          echo "KERNEL_IMAGE_NAME=${{ env.KERNEL_IMAGE_NAME }}"
+          echo "LLVM_CONFIG=${{ env.LLVM_CONFIG }}"
+          echo "ENABLE_KERNELSU=${{ env.ENABLE_KERNELSU }}"
+          echo "KERNELSU_TAG=${{ env.KERNELSU_TAG }}"
+          echo "ENABLE_KVM=${{ env.ENABLE_KVM }}"
+          echo "ENABLE_LXC_DOCKER=${{ env.ENABLE_LXC_DOCKER }}"
+          echo "SWITCH_PYTHON=${{ env.SWITCH_PYTHON }}"
+          echo "NEED_DTBO=${{ env.NEED_DTBO }}"
+
       - name: 构建编译内核环境
         run: |
           sudo apt-get update
@@ -69,6 +84,10 @@ jobs:
       - name: 下载内核源码
         run: |
           cd $GITHUB_WORKSPACE/kernel_workspace
+          echo "当前内核源码地址：${{ env.KERNEL_SOURCE }}"
+          echo "当前内核源码分支：${{ env.KERNEL_SOURCE_BRANCH }}"
+          echo "远程分支列表："
+          git ls-remote --heads "${{ env.KERNEL_SOURCE }}"
           git clone "${{ env.KERNEL_SOURCE }}" -b "${{ env.KERNEL_SOURCE_BRANCH }}" android-kernel --depth=1
 
       - name: 开启 lxc 和 docker 配置
